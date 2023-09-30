@@ -25,14 +25,20 @@ const int ledPin = 2;
 float value = 0;
 float currentValue;
 int speedValue = 0;
+bool disconnected = false;
+bool armedDebounced = false;
 StaticJsonDocument<256> doc;
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
+
 Servo ESC;
-
-
+Servo AileronL;
+Servo AileronR;
+Servo Rudder;
+Servo ElevatorL;
+Servo ElevatorR;
 
 
 const char index_html[] PROGMEM = R"rawliteral(
@@ -119,10 +125,12 @@ const fudgeFactor = 2;  // because of bug in Chrome related to svg text alignmen
 const runningElem = document.querySelector('#running');
 const gamepadsElem = document.querySelector('#gamepads');
 const gamepadsByIndex = {};
+
 const buttonInput = {
     button: "",
     value: 0
 };
+
 const axisInput = {
     joystick: "",
     x: 0,
@@ -357,7 +365,7 @@ requestAnimationFrame(process);
 )rawliteral";
 
 void notifyClients() {
-  ws.textAll(String(buttonData));
+  ws.textAll(String(inputData));
 }
 
 
@@ -398,15 +406,18 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
   switch (type) {
     case WS_EVT_CONNECT:
       Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+      disconnected = false;
       break;
     case WS_EVT_DISCONNECT:
       Serial.printf("WebSocket client #%u disconnected\n", client->id());
+      disconnected = true; 
       break;
     case WS_EVT_DATA:
       handleWebSocketMessage(arg, data, len);
       break;
     case WS_EVT_PONG:
     case WS_EVT_ERROR:
+      disconnected = true; 
       break;
   }
 }
@@ -443,6 +454,11 @@ void setup(){
   
   Serial.begin(115200);
   ESC.attach(21,1000,2000);
+  AileronL.attach(19);
+  AileronR.attach(18);
+  Rudder.attach(34);
+  ElevatorL.attach(33);
+  ELevatorR.attach(32);
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW);
 
@@ -480,57 +496,107 @@ void setup(){
 
 
 void parseData(){
-  //const size_t capacity = JSON_OBJECT_SIZE(2) + 60;
-  //DynamicJsonBuffer jsonBuffer(capacity);
-  
+
   DeserializationError error = deserializeJson(doc, inputData);
   
   int button = doc["button"]; 
   float value = doc["value"]; 
+  float x = doc["x"];
+  float y = doc["y"];
+  int joystick = doc["joystick"];
   if(error) {
   //Serial.println("DeserializationError! deserializeJson() failed with code");
   //Serial.println(error.c_str());
   }else{
     
     currentButton = button;
-    currentValue = value;
+    currentValue = value * 100;
+    speedValue = map(currentValue, 0,100,0,180);
     Serial.println(currentButton); 
-    Serial.println(value);  
+    Serial.println(value);
+    //pitch
+    elevatorValue = map(x * 50, 0,100, 0,180);
+    //roll
+    aileronValue = map(y * 50, 0,100, 0,180)
   }
 }
 
 void loop() {
   parseData();
-  //Implenment saftey precautions
+  
+  if (discconected == true){
+    ESC.write(0); 
+    ElevatorL.write(20);
+    ElevatorR.write(-20);
+  }
 
   
   ws.cleanupClients();
   //currentButton = debounceInput(buttonData);
   
-  if (currentButton == 0){
+  if (joystick == 0 && x != 0 || y != 0){
+    ElevatorL.write(elevatorValue);
+    ElevatorR.write(-elevatorValue);
+    AileronL.write(aileronValue);
+    AileronR.write(aileronValue);
+  }
+  
+  
+  //Armed/Disarm
+  if (currentButton == 16 && armedDebounce == false){
     armed = !armed;
+    armedDebounce = true;
     if (armed == true){
       Serial.println("!SYSTEMS ARMED!");
     }else if(armed == false){
-      Serial.println("!SYSTEMS UNARMED!");
+      Serial.println("!SYSTEMS DISARMED!");
     }
+  }else if(currentButton != 16){
+    armedDebounce = false;
   }
   
+  
+  //Led On/Off
   if (currentButton == 1 && armed == true){
       digitalWrite(ledPin, HIGH);
   }else if(currentButton == 1 && armed == false){
       digitalWrite(ledPin, LOW);
       Serial.println("System is not armed!");
   }
-
+  //Test
   if (currentButton == 2 ){
      Serial.println("test");
   }
+  
+  
+  //Rudder(Left)
+  if (currentButton == 4 && armed == true){
+    Rudder.write(20);
+    Serial.println("Rudder Left");
+  }else if(currentButton != 4 && armed == true){
+    Rudder.write(0);
+  }else if(currentButton == 4 && armed == false){
+    Serial.println("System is not armed!");
+  }
+  
+  //Rudder(Right)
+  if (currentButton == 5 && armed == true){
+    Rudder.write(-20);
+    Serial.println("Rudder Right");
+  }else if(currentButton != 4 && armed == true){
+    Rudder.write(0);
+  }else if(currentButton == 5 && armed == false){
+    Serial.println("System is not armed!");
+  }
+   
+ 
+  //Throttle 
   if (currentButton == 7 && armed == true){
-    speedValue = map(currentValue, 0,1,0,180);
     ESC.write(speedValue); 
   }else if(currentButton == 7 && armed == false){
     Serial.println("System is not armed!");
   }
   delay(50);
+  
+  
 }
