@@ -8,51 +8,35 @@
 // Import required libraries
 #include <WiFi.h>
 #include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
+#include <ESPAsyncWebSrv.h>
 #include <ArduinoJson.h>
+#include <ESP32Servo.h>
 
 // Replace with your network credentials
 const char* ssid = "BELL877";
 const char* password = "564599AECF3A";
 bool armed = false;
 char* buttonData = "";
-char* currentButton = "";
+int currentButton = -1;
 char* lastButton = "";
+char* inputData = "";
 String pressedButton;
 const int ledPin = 2;
+float value = 0;
+float currentValue;
+int speedValue = 0;
+StaticJsonDocument<256> doc;
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
+Servo ESC;
 
 
 
 
 const char index_html[] PROGMEM = R"rawliteral(
 
-<!--
-/*
- * Copyright 2019 Gregg Tavares
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
- */
--->
 <style>
 body {
     background: #444;
@@ -456,8 +440,9 @@ String processor(const String& var){
 
 void setup(){
   // Serial port for debugging purposes
+  
   Serial.begin(115200);
-
+  ESC.attach(21,1000,2000);
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW);
 
@@ -495,22 +480,27 @@ void setup(){
 
 
 void parseData(){
-  const size_t capacity = JSON_OBJECT_SIZE(3) + 60;
-  DynamicJsonBuffer jsonBuffer(capacity);
+  //const size_t capacity = JSON_OBJECT_SIZE(2) + 60;
+  //DynamicJsonBuffer jsonBuffer(capacity);
   
-  JsonObject& root = jsonBuffer.parseObject(inputData);
+  DeserializationError error = deserializeJson(doc, inputData);
   
-  int joystick = root["joystick"]; 
-  float x = root["x"]; 
-  float y = root["y"]; 
-  if(!root.success()) {
-  Serial.println("parseObject() failed");
+  int button = doc["button"]; 
+  float value = doc["value"]; 
+  if(error) {
+  //Serial.println("DeserializationError! deserializeJson() failed with code");
+  //Serial.println(error.c_str());
   }else{
-    Serial.println(joystick,x,y); 
+    
+    currentButton = button;
+    currentValue = value;
+    Serial.println(currentButton); 
+    Serial.println(value);  
   }
 }
-void loop() {
 
+void loop() {
+  parseData();
   //Implenment saftey precautions
 
   
@@ -526,14 +516,21 @@ void loop() {
     }
   }
   
-  if (currentButton == "btn1" && armed == true){
+  if (currentButton == 1 && armed == true){
       digitalWrite(ledPin, HIGH);
-    }else if(currentButton == "btn1" && armed == false){
+  }else if(currentButton == 1 && armed == false){
       digitalWrite(ledPin, LOW);
       Serial.println("System is not armed!");
-    }
+  }
 
-  if (currentButton == "btn4"){
+  if (currentButton == 2 ){
      Serial.println("test");
   }
+  if (currentButton == 7 && armed == true){
+    speedValue = map(currentValue, 0,1,0,180);
+    ESC.write(speedValue); 
+  }else if(currentButton == 7 && armed == false){
+    Serial.println("System is not armed!");
+  }
+  delay(50);
 }
