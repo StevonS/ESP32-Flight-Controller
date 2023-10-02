@@ -13,8 +13,8 @@
 #include <ESP32Servo.h>
 
 // Replace with your network credentials
-const char* ssid = "BELL877";
-const char* password = "564599AECF3A";
+const char* ssid = "SSID_HERE";
+const char* password = "PASSWORD_HERE";
 bool armed = false;
 char* buttonData = "";
 int currentButton = -1;
